@@ -1,0 +1,54 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+      - run: uv sync --locked --group tests
+      - run: uv run ruff check src tests
+      - run: uv run ruff format --check src tests
+
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+      # No run extra: the unit tests must pass without dscim installed.
+      - run: uv sync --locked --group tests
+      - run: uv run pytest -m "not integration" -v --color=yes tests
+
+  integration:
+    runs-on: ubuntu-latest
+    # Installs dscim from a git commit with its full dependency stack;
+    # allowed to fail without blocking merges until the pin has CI
+    # history behind it.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+      - run: uv sync --locked --group tests --extra run
+      - run: uv run pytest -v --color=yes tests

@@ -1,0 +1,96 @@
+# Discrete SSP/RCP mode. Sector and path values are placeholders.
+# dscim's reduce_damages and sum_AMEL read this file directly, so
+# `sectors` and `paths` use their key names.
+
+mode: ssp
+
+climate:
+  gases: [CO2_Fossil]
+  gmst_path: /data/climate/GMTanom_all_temp_2001_2010_smooth.csv
+  gmsl_path: /data/climate/coastal_gmsl_v0.20.zarr
+  gmst_fair_path: /data/climate/ar6_fair162_control_pulse.nc
+  gmsl_fair_path: /data/climate/gmsl_pulse.zarr
+  damages_pulse_conversion_path: /data/climate/conversion_v5.02.nc4
+  ecs_mask_path: /data/climate/parameter_filters_truncate_ECS_v4.0.nc
+  emission_scenarios: [ssp245, ssp370]
+
+econ:
+  path: /data/econ/integration-econ-bc39.zarr
+
+paths:
+  reduced_damages_library: /results/reduced_damages
+  results: /results/AR6_ssp
+
+# Aggregate sectors built by `dscim-cli sum-sectors` (dscim sum_AMEL):
+# the named sector sums its members' delta/histclim.
+aggregates:
+  AMEL_m0: [agriculture, mortality_v0, energy, labor]
+
+sectors:
+  agriculture:
+    sector_path: /data/sectors/agriculture.zarr
+    histclim: histclim
+    delta: delta
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+  mortality_v0:
+    sector_path: /data/sectors/mortality_v0.zarr
+    histclim: histclim
+    delta: delta
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+  energy:
+    sector_path: /data/sectors/energy.zarr
+    histclim: histclim_rebased
+    delta: delta_rebased
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+  labor:
+    sector_path: /data/sectors/labor.zarr
+    histclim: histclim_rebased
+    delta: delta_rebased
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+  AMEL_m0:
+    sector_path: /data/sectors/AMEL_m0.zarr
+    histclim: summed_histclim
+    delta: summed_delta
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+  coastal_v0.20:
+    sector_path: /data/sectors/coastal_v0.20.zarr
+    histclim: histclim
+    delta: delta
+    formula: "damages ~ -1 + gmsl + np.power(gmsl, 2)"
+  # Coefficient-only sector: no sector_path/histclim/delta. The presence
+  # of damage_function_path makes `run` load coefficients instead of
+  # fitting; it is written by `dscim-cli combine`.
+  CAMEL_m0_c0.20:
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2) + gmsl + np.power(gmsl, 2)"
+    damage_function_path: /results/AR6_ssp/CAMEL_m0_c0.20/2020/unmasked
+
+# MainRecipe options; anything omitted uses dscim main's default.
+menu:
+  fit_type: ols
+  discrete_discounting: false
+  fair_aggregation: [ce, median, mean, gwr_mean, median_params]
+  weitzman_parameter: [0.1, 0.5]
+  subset_dict: {ssp: [SSP2, SSP3, SSP4]}
+  ext_method: global_c_ratio
+  ext_subset_start_year: 2085
+  ext_subset_end_year: 2099
+  ext_end_year: 2300
+
+# Axes of run_ssps's internal product. menu_pairs are explicit
+# (recipe, discounting) pairs, never a cross product.
+sweep:
+  sectors: [AMEL_m0, coastal_v0.20]
+  pulse_years: [2020]
+  menu_pairs:
+    - {recipe: adding_up, discounting: euler_ramsey}
+    - {recipe: risk_aversion, discounting: euler_ramsey}
+    - {recipe: equity, discounting: euler_ramsey}
+  eta_rho: [[2.0, 0.0001]]
+  masks: [null, truncate_at_ecs995symmetric_passing_mask]
+  fair_dims: [[simulation]]
+
+# Consumed by `dscim-cli reduce`. equity is not listed: it reads
+# the risk_aversion reduced damages.
+reduce:
+  reductions: [cc, no_cc]
+  recipes: [adding_up, risk_aversion]

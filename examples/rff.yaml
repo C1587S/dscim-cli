@@ -1,0 +1,63 @@
+# EPA/RFF mode: 10,000 probabilistic runid draws, precomputed damage
+# function coefficients, no fitting. Path values are placeholders.
+
+mode: rff
+
+climate:
+  gases: [CO2_Fossil, CH4, N2O]
+  gmst_fair_path: /inputs/climate/gmst_pulse.nc4
+  gmsl_fair_path: /inputs/climate/gmsl_pulse.nc4
+  # gmst_path/gmsl_path feed damage-function fitting, which never runs
+  # in rff mode; empty strings are accepted here only.
+  gmst_path: ""
+  gmsl_path: ""
+  damages_pulse_conversion_path: /inputs/climate/conversion_v5.03.nc4
+  ecs_mask_path: null
+  # Must be null: runid-shaped FaIR files have no rcp dimension.
+  emission_scenarios: null
+
+econ:
+  # Explicit file (dscim-facts-epa hardcodes the filename; here it is
+  # config). Swap in rff_USA_socioeconomics.nc4 for territorial-US
+  # damages.
+  path: /inputs/econ/rff_global_socioeconomics.nc4
+
+paths:
+  results: /results/rff
+
+sectors:
+  # Every rff sector must carry damage_function_path: ce_path is None in
+  # rff runs, so coefficients cannot be fitted, only loaded. The file
+  # name encodes recipe/discounting/eta/rho; nothing cross-checks the
+  # file contents against those values.
+  CAMEL_m1_c0.20:
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2) + gmsl + np.power(gmsl, 2)"
+    damage_function_path: /inputs/damage_functions/CAMEL_m1_c0.20
+
+menu:
+  # Empty list: skip the collapsed-SCC computation inside dscim and keep
+  # the uncollapsed outputs; `dscim-cli scc` composes SCCs from them.
+  # global_consumption_no_pulse feeds the certainty_equivalent collapse.
+  fair_aggregation: []
+  weitzman_parameter: [0.5]
+  save_files: [uncollapsed_sccs, uncollapsed_marginal_damages,
+               uncollapsed_discount_factors, global_consumption_no_pulse]
+
+sweep:
+  sectors: [CAMEL_m1_c0.20]
+  pulse_years: [2020, 2030]
+  menu_pairs:
+    - {recipe: risk_aversion, discounting: euler_ramsey}
+  eta_rho:
+    - [1.421158116, 0.00461878399]
+  # masks: / fair_dims: axes are a validation error in rff mode.
+
+# Consumed by `dscim-cli scc`: compose SCCs from the uncollapsed
+# outputs, deflate, and collapse across runid. damages_from and
+# discounting_from may point at a different results root, e.g.
+# territorial-US damages against global discounting.
+scc:
+  deflator: 1.012094        # explicit factor; e.g. 113.648/112.29 is the
+                            # 2019->2020 USD conversion dscim-facts-epa uses
+  collapse: certainty_equivalent
+  output: /results/scghgs

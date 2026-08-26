@@ -1,0 +1,39 @@
+# Smallest useful config: one sector, one run, no aggregates, no
+# coastal, no combine. Start here; ssp.yaml and rff.yaml show the full
+# surface. Paths are placeholders.
+
+mode: ssp
+
+climate:
+  gases: [CO2_Fossil]
+  gmst_path: /data/climate/GMTanom_all_temp_2001_2010_smooth.csv
+  gmst_fair_path: /data/climate/ar6_fair162_control_pulse.nc
+  damages_pulse_conversion_path: /data/climate/conversion_v5.02.nc4
+  emission_scenarios: [ssp245, ssp370]
+
+econ:
+  path: /data/econ/integration-econ-bc39.zarr
+
+paths:
+  reduced_damages_library: /results/reduced_damages
+  results: /results/AR6_ssp
+
+sectors:
+  labor:
+    sector_path: /data/sectors/labor.zarr
+    histclim: histclim_rebased
+    delta: delta_rebased
+    formula: "damages ~ -1 + anomaly + np.power(anomaly, 2)"
+
+# eta, rho, recipe, and discounting must be explicit. dscim's
+# defaults for them are never applied silently.
+sweep:
+  sectors: [labor]
+  pulse_years: [2020]
+  menu_pairs:
+    - {recipe: adding_up, discounting: euler_ramsey}
+  eta_rho: [[2.0, 0.0001]]
+
+reduce:
+  reductions: [cc, no_cc]
+  recipes: [adding_up]

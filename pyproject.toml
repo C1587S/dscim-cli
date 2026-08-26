@@ -1,0 +1,48 @@
+[project]
+name = "dscim-cli"
+version = "0.1.0"
+description = "Command-line interface to the dscim social cost of carbon library"
+requires-python = ">=3.12"
+dependencies = ["click>=8.1", "pyyaml>=6.0"]
+
+[project.optional-dependencies]
+# dscim pinned to the main commit the test suite runs against. To use
+# a different dscim, skip the extra and install your version instead.
+run = [
+    "dscim @ git+https://github.com/ClimateImpactLab/dscim@6a1f4d7e5ebe87653f149460a9585951ed0f3b06",
+]
+
+[project.scripts]
+dscim-cli = "dscim_cli.cli:main"
+
+[dependency-groups]
+tests = ["pytest>=8.0", "ruff>=0.8"]
+dev = [{ include-group = "tests" }]
+
+[build-system]
+requires = ["uv_build>=0.11.13,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs dscim and its dependency stack installed",
+]
+
+[tool.ruff.lint]
+extend-select = [
+    "B",    # bugbear
+    "C4",   # comprehensions
+    "I",    # isort
+    "ISC",  # implicit string concat
+    "PIE",
+    "SIM",  # simplify
+    "TID",  # tidy imports
+    "UP",   # pyupgrade
+    "RUF",
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["dscim_cli"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
