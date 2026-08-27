@@ -723,6 +723,18 @@ def _validate_sweep(
         if not isinstance(year, int):
             errors.append(f"sweep.pulse_years entries must be integers, got {year!r}")
 
+    for mask in sweep.get("masks", []):
+        if mask is None:
+            continue
+        entry = CATALOGUE["ecs_mask_name"]
+        _unsupported(
+            errors,
+            warnings,
+            allow=allow_unsupported,
+            message=(f"sweep mask {mask!r}: {entry.reason} [{entry.citation}]"),
+        )
+        break
+
     pairs = sweep.get("menu_pairs", [])
     if not pairs:
         errors.append(

@@ -868,8 +868,16 @@ _OPTIONS = (
         "masking to occur. Open set; five names are used in production.",
         ("fair",),
         None,
-        "simple_storage.py:56; application gate in Climate; production "
-        "names from dscim-research main/run_integration_result.py:183-190",
+        "simple_storage.py:56; application in Climate.anomalies; "
+        "production names from dscim-research "
+        "main/run_integration_result.py:183-190",
+        status="unsupported",
+        reason="Climate.anomalies assigns the result of Dataset.update, "
+        "which returns None on current xarray, so every masked run "
+        "crashes with TypeError before computing anything; masking "
+        "worked only with the older xarray where update returned the "
+        "dataset.",
+        restriction="library",
         modes=("ssp",),
         values=tuple(_v(m) for m in KNOWN_ECS_MASKS),
         open_set=True,
@@ -955,10 +963,9 @@ _OPTIONS = (
         True,
         "midprocessing.py:18; rebinding midprocessing.py (coefs, fit = {}, {})",
         status="dead",
-        reason="The fit parameter is rebound to an empty dict before it "
-        "is tested (combine_CAMEL_coefs does `coefs, fit = {}, {}` and "
-        "then `if fit:`), so the fitted-values merge never runs whatever "
-        "is passed.",
+        reason="combine_CAMEL_coefs rebinds fit to an empty dict before "
+        "testing it (`coefs, fit = {}, {}` then `if fit:`), so the "
+        "fitted-values merge does not run for any argument value.",
         restriction="library",
         modes=("ssp",),
     ),

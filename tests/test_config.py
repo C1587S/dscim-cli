@@ -57,7 +57,7 @@ def ssp_config() -> dict:
                 {"recipe": "risk_aversion", "discounting": "euler_ramsey"},
             ],
             "eta_rho": [[2.0, 0.0001]],
-            "masks": [None, "truncate_at_ecs995symmetric_passing_mask"],
+            "masks": [None],
             "fair_dims": [["simulation"]],
         },
         "reduce": {"reductions": ["cc", "no_cc"], "recipes": ["adding_up"]},
@@ -238,11 +238,22 @@ def test_removed_regional_surface_is_a_known_gap_error():
 
 
 def test_sweep_expansion_count_and_axes():
-    runs = expand_sweep(ssp_config())
+    config = ssp_config()
+    config["sweep"]["masks"] = [None, "truncate_at_ecs995symmetric_passing_mask"]
+    runs = expand_sweep(config)
     # 2 sectors x 1 pulse year x 2 pairs x 1 eta_rho x 2 masks x 1 fair_dims
     assert len(runs) == 8
     masks = {run.mask for run in runs}
     assert masks == {None, "truncate_at_ecs995symmetric_passing_mask"}
+
+
+def test_masked_sweep_is_unsupported_but_overridable():
+    config = ssp_config()
+    config["sweep"]["masks"] = [None, "truncate_at_ecs995symmetric_passing_mask"]
+    message = errors_of(config)
+    assert "Dataset.update" in message
+    warnings = validate_config(config, allow_unsupported=True)
+    assert any("mask" in w for w in warnings)
 
 
 def test_rff_expansion_has_no_mask_axis():
@@ -253,6 +264,7 @@ def test_rff_expansion_has_no_mask_axis():
 
 def test_save_path_mask_and_fair_dims_layout():
     config = ssp_config()
+    config["sweep"]["masks"] = [None, "truncate_at_ecs995symmetric_passing_mask"]
     config["sweep"]["fair_dims"] = [["simulation", "rcp"]]
     runs = expand_sweep(config)
     masked = next(run for run in runs if run.mask)

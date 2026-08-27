@@ -4,6 +4,7 @@ import difflib
 import importlib
 import logging
 import os
+import pathlib
 import sys
 
 import click
@@ -288,18 +289,21 @@ def plan(config_path: str, overrides: tuple[str, ...], allow_unsupported: bool) 
         _fail(error)
         return
     steps = plan_steps(config)
+    root = _plan_root(steps)
     if _use_rich():
-        _rich_plan(steps)
+        _rich_plan(steps, root)
         return
+    if root:
+        click.echo(f"root: {root}")
     for index, step in enumerate(steps, start=1):
         click.echo(f"{index}. [{step.status()}] {step.title}")
         for entry in step.inputs:
             state = "ok" if os.path.exists(entry.path) else "missing"
             source = f" <- dscim-cli {entry.producer}" if entry.producer else ""
-            click.echo(f"     in  [{state}] {entry.path}{source}")
+            click.echo(f"     in  [{state}] {_display_path(entry.path, root)}{source}")
         for path in step.outputs:
             state = "exists" if os.path.exists(path) else "new"
-            click.echo(f"     out [{state}] {path}")
+            click.echo(f"     out [{state}] {_display_path(path, root)}")
 
 
 @main.command()
@@ -529,8 +533,43 @@ def _rich_stages() -> None:
     _console().print(tree)
 
 
-def _rich_plan(steps) -> None:
+def _plan_root(steps) -> str:
+    paths = [entry.path for step in steps for entry in step.inputs]
+    paths += [path for step in steps for path in step.outputs]
+    paths = [p for p in paths if os.path.isabs(p)]
+    if not paths:
+        return ""
+    root = os.path.commonpath(paths)
+    # A near-empty root ("/" or "/x") would relativize unrelated trees.
+    if len(pathlib.PurePath(root).parts) < 3:
+        return ""
+    return root
+
+
+def _display_path(path: str, root: str) -> str:
+    if root and path.startswith(root + os.sep):
+        return os.path.relpath(path, root)
+    return path
+
+
+def _middle_truncate(path: str, width: int) -> str:
+    if width <= 0 or len(path) <= width:
+        return path
+    tail = path[-(width // 2) :]
+    head = path[: max(width - len(tail) - 1, 1)]
+    return f"{head}\u2026{tail}"
+
+
+def _rich_plan(steps, root: str) -> None:
     console = _console()
+    if root:
+        shown_root = _middle_truncate(root, max(console.width - 7, 20))
+        console.print(
+            Text(f"root: {shown_root}", style="dim"),
+            no_wrap=True,
+            overflow="ellipsis",
+        )
+    path_width = max(console.width - 34, 20)
     for index, step in enumerate(steps, start=1):
         status = step.status()
         line = Text()
@@ -543,25 +582,27 @@ def _rich_plan(steps) -> None:
             line.append(f"[{status}]", style="bold")
         console.print(line)
         for entry in step.inputs:
+            shown = _middle_truncate(_display_path(entry.path, root), path_width)
             detail = Text("     in  ")
             if os.path.exists(entry.path):
                 detail.append("[ok] ", style="dim")
-                detail.append(entry.path, style="dim")
+                detail.append(shown, style="dim")
             else:
                 detail.append("[missing] ", style=ACCENT)
-                detail.append(entry.path)
+                detail.append(shown)
             if entry.producer:
                 detail.append(f"  <- dscim-cli {entry.producer}", style="dim")
-            console.print(detail)
+            console.print(detail, no_wrap=True, overflow="ellipsis")
         for path in step.outputs:
+            shown = _middle_truncate(_display_path(path, root), path_width)
             detail = Text("     out ")
             if os.path.exists(path):
                 detail.append("[exists] ", style="dim")
-                detail.append(path, style="dim")
+                detail.append(shown, style="dim")
             else:
                 detail.append("[new] ", style="dim")
-                detail.append(path)
-            console.print(detail)
+                detail.append(shown)
+            console.print(detail, no_wrap=True, overflow="ellipsis")
 
 
 def _rich_summary(config: dict, runs) -> None:

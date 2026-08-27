@@ -24,7 +24,7 @@ def test_all_example_configs_validate():
 def test_dry_run_default_is_summary(tmp_path):
     result = invoke("run", str(EXAMPLES / "ssp.yaml"), "--dry-run")
     assert result.exit_code == 0, result.output
-    assert "runs: 12" in result.output
+    assert "runs: 6" in result.output
     assert "missing inputs:" in result.output
     assert "external: provide these files" in result.output
     assert "produced by `dscim-cli reduce CONFIG`" in result.output
@@ -115,7 +115,7 @@ def test_envvar_prefix_is_active():
         env={"DSCIM_CLI_RUN_DRY_RUN": "1"},
     )
     assert result.exit_code == 0, result.output
-    assert "runs: 12" in result.output
+    assert "runs: 6" in result.output
 
 
 def test_plan_lists_ordered_steps_with_status():
@@ -243,6 +243,6 @@ def test_rich_path_renders_plan_with_status_words(monkeypatch):
     monkeypatch.setattr(cli_module, "_stdout_is_terminal", lambda: True)
     result = invoke("plan", str(EXAMPLES / "ssp.yaml"))
     assert result.exit_code == 0, result.output
-    # status words stay present, so colour is never the only signal
+    # the status words carry the state without colour
     assert "[blocked-by-" in result.output
     assert "[missing]" in result.output

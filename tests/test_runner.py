@@ -3,6 +3,8 @@
 Skipped when dscim is not installed.
 """
 
+import os
+
 import pytest
 
 dscim = pytest.importorskip("dscim")
@@ -10,6 +12,7 @@ xr = pytest.importorskip("xarray")
 
 import dask
 import fixture_factory
+import numpy as np
 import yaml
 
 from dscim_cli import runner
@@ -37,10 +40,26 @@ def _single_run_config(config: dict, recipe: str, discounting: str) -> dict:
     return narrowed
 
 
-@pytest.mark.parametrize("recipe", RECIPES)
-@pytest.mark.parametrize("discounting", DISCOUNTINGS)
-def test_runner_matches_direct_menu_call(ssp_setup, recipe, discounting):
-    config = _single_run_config(ssp_setup, recipe, discounting)
+# Dimensions along which a healthy SCC should not be constant, checked
+# whenever the output actually carries them with more than one entry.
+VARYING_DIMS = ("rcp", "ssp", "model", "fair_aggregation", "discrate", "runid")
+
+
+def _assert_not_degenerate(data, *, varying=VARYING_DIMS):
+    """Require finite, non-zero, non-constant values that vary along
+    the given dimensions."""
+    values = np.asarray(data.values, dtype=float)
+    assert np.isfinite(values).all(), "non-finite values in result"
+    assert (values != 0).any(), "result is identically zero"
+    if values.size > 1:
+        assert float(values.std()) > 0, "result is a single repeated value"
+    for dim in varying:
+        if data.sizes.get(dim, 1) > 1:
+            spread = float(data.std(dim).max())
+            assert spread > 0, f"no variation across {dim}"
+
+
+def _assert_scc_equivalence(config):
     runs = expand_sweep(config)
     assert len(runs) == 1
     run = runs[0]
@@ -50,16 +69,83 @@ def test_runner_matches_direct_menu_call(ssp_setup, recipe, discounting):
 
     scc_file = next(p for p in run_outputs(config, run) if p.endswith("_scc.nc4"))
     written = xr.open_dataset(scc_file)
+    _assert_not_degenerate(written["scc"])
 
     direct_kwargs = runner.build_kwargs(config, run)
     direct_kwargs["save_path"] = None
-    direct = runner.MENU[recipe](**direct_kwargs).calculate_scc
+    direct = runner.MENU[run.recipe](**direct_kwargs).calculate_scc
     if isinstance(direct, xr.DataArray):
         direct = direct.to_dataset(name="scc")
 
     xr.testing.assert_allclose(
         written[["scc"]], direct[["scc"]].transpose(*written["scc"].dims)
     )
+
+
+@pytest.mark.parametrize("recipe", RECIPES)
+@pytest.mark.parametrize("discounting", DISCOUNTINGS)
+def test_runner_matches_direct_menu_call(ssp_setup, recipe, discounting):
+    _assert_scc_equivalence(_single_run_config(ssp_setup, recipe, discounting))
+
+
+EXTRA_DISCOUNTINGS = (
+    "naive_ramsey",
+    "constant_model_collapsed",
+    "euler_gwr",
+    "gwr_gwr",
+)
+
+
+@pytest.mark.parametrize("discounting", EXTRA_DISCOUNTINGS)
+def test_additional_discountings_match_direct_call(ssp_setup, discounting):
+    _assert_scc_equivalence(_single_run_config(ssp_setup, "adding_up", discounting))
+
+
+def test_all_fair_aggregations_match_direct_call(ssp_setup):
+    config = _single_run_config(ssp_setup, "adding_up", "euler_ramsey")
+    config["menu"]["fair_aggregation"] = [
+        "ce",
+        "mean",
+        "gwr_mean",
+        "median",
+        "median_params",
+    ]
+    _assert_scc_equivalence(config)
+
+
+@pytest.mark.xfail(
+    strict=True,
+    raises=TypeError,
+    reason="dscim Climate.anomalies assigns Dataset.update's return value, "
+    "which is None on current xarray; delete this xfail and the "
+    "ecs_mask_name unsupported status when fixed upstream",
+)
+def test_ecs_mask_crashes_in_dscim(ssp_setup, tmp_path):
+    config = _single_run_config(ssp_setup, "adding_up", "euler_ramsey")
+    config["climate"]["ecs_mask_path"] = fixture_factory.write_ecs_mask(tmp_path)
+    config["sweep"]["masks"] = ["keep_first"]
+    runner.execute(config, expand_sweep(config), invocation="test")
+
+
+def test_fair_dims_collapse_matches_direct_call(ssp_setup):
+    config = _single_run_config(ssp_setup, "adding_up", "euler_ramsey")
+    config["menu"]["fair_aggregation"] = ["ce", "mean", "median"]
+    config["sweep"]["fair_dims"] = [["simulation", "rcp"]]
+    assert validate_config(config) == []
+    _assert_scc_equivalence(config)
+    run = expand_sweep(config)[0]
+    assert "fair_collapsed_rcp" in run_outputs(config, run)[0]
+
+
+@pytest.mark.full_matrix
+@pytest.mark.skipif(
+    not os.environ.get("DSCIM_CLI_FULL_MATRIX"),
+    reason="set DSCIM_CLI_FULL_MATRIX=1 to run the full recipe x discounting cross",
+)
+@pytest.mark.parametrize("recipe", ("risk_aversion", "equity"))
+@pytest.mark.parametrize("discounting", EXTRA_DISCOUNTINGS)
+def test_full_matrix_matches_direct_call(ssp_setup, recipe, discounting):
+    _assert_scc_equivalence(_single_run_config(ssp_setup, recipe, discounting))
 
 
 def test_rff_run_produces_uncollapsed_outputs(tmp_path):
@@ -71,12 +157,12 @@ def test_rff_run_produces_uncollapsed_outputs(tmp_path):
     for run in runs:
         for path in run_outputs(config, run):
             data = xr.open_dataset(path)
-            assert all(float(data[v].isnull().mean()) < 1.0 for v in data.data_vars), (
-                path
-            )
+            for variable in data.data_vars:
+                _assert_not_degenerate(data[variable])
         outputs = run_outputs(config, run)
         sccs = xr.open_dataset(next(p for p in outputs if "uncollapsed_sccs" in p))
         assert "runid" in sccs.dims
+        _assert_not_degenerate(next(iter(sccs.data_vars.values())), varying=("runid",))
 
 
 def test_resume_skips_completed_runs(tmp_path):
@@ -227,6 +313,7 @@ def test_sum_sectors_builds_aggregate(tmp_path):
     assert lines[0].startswith("completed")
     summed = xr.open_zarr(target)
     assert "summed_delta" in summed and "summed_histclim" in summed
+    _assert_not_degenerate(summed["summed_delta"], varying=())
 
 
 def test_reduce_all_writes_both_conventions(tmp_path):
@@ -246,6 +333,15 @@ def test_reduce_all_writes_both_conventions(tmp_path):
     sector_dir = pathlib.Path(fresh) / "labor"
     assert (sector_dir / "adding_up_cc.zarr").exists()  # eta=None, unsuffixed
     assert (sector_dir / "risk_aversion_cc_eta2.0.zarr").exists()
+    cc = xr.open_zarr(str(sector_dir / "adding_up_cc.zarr"))["cc"]
+    _assert_not_degenerate(cc, varying=())
+    no_cc_path = sector_dir.parent / "labor" / "adding_up_no_cc.zarr"
+    runner.reduce_all(
+        {**config, "reduce": {"reductions": ["no_cc"], "recipes": ["adding_up"]}}
+    )
+    no_cc = xr.open_zarr(str(no_cc_path))["no_cc"]
+    # equal cc and no_cc reductions mean zero damages downstream
+    assert float(abs(cc - no_cc).max()) > 0
 
 
 def test_combine_merges_coefficient_files(tmp_path):
@@ -290,6 +386,8 @@ def test_combine_merges_coefficient_files(tmp_path):
     assert {"anomaly", "np.power(anomaly, 2)", "gmsl", "np.power(gmsl, 2)"} <= set(
         combined.data_vars
     )
+    for variable in combined.data_vars:
+        _assert_not_degenerate(combined[variable], varying=())
 
 
 @pytest.fixture(scope="module")
@@ -320,7 +418,7 @@ def test_scc_compose_mean(rff_with_outputs):
     assert lines and all(line.startswith("completed") for line in lines)
     written = xr.open_dataset(lines[0].split("completed: ")[1])
     assert "runid" not in written.dims
-    assert float(written["scghg"].isnull().mean()) == 0.0
+    _assert_not_degenerate(written["scghg"], varying=())
 
 
 def test_scc_compose_certainty_equivalent_and_cross_root(rff_with_outputs):
@@ -338,4 +436,4 @@ def test_scc_compose_certainty_equivalent_and_cross_root(rff_with_outputs):
     lines = composer.compose(config)
     written = xr.open_dataset(lines[0].split("completed: ")[1])
     assert "runid" not in written.dims
-    assert float(written["scghg"].isnull().mean()) == 0.0
+    _assert_not_degenerate(written["scghg"], varying=())

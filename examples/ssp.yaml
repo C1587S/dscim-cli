@@ -86,7 +86,10 @@ sweep:
     - {recipe: risk_aversion, discounting: euler_ramsey}
     - {recipe: equity, discounting: euler_ramsey}
   eta_rho: [[2.0, 0.0001]]
-  masks: [null, truncate_at_ecs995symmetric_passing_mask]
+  # ECS masking crashes on current xarray (see `dscim-cli explain
+  # ecs_mask_name`); production mask names would go here once fixed
+  # upstream, e.g. truncate_at_ecs995symmetric_passing_mask.
+  masks: [null]
   fair_dims: [[simulation]]
 
 # Consumed by `dscim-cli reduce`. equity is not listed: it reads

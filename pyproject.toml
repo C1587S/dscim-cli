@@ -16,7 +16,13 @@ run = [
 dscim-cli = "dscim_cli.cli:main"
 
 [dependency-groups]
-tests = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.8", "ty>=0.0.35"]
+tests = [
+    "jupyterlab>=4.6.3",
+    "pytest>=8.0",
+ "pytest-cov>=6.0",
+ "ruff>=0.8",
+ "ty>=0.0.35",
+]
 dev = [{ include-group = "tests" }]
 
 [build-system]
@@ -31,6 +37,7 @@ extra-paths = ["tests"]
 [tool.pytest.ini_options]
 markers = [
     "integration: needs dscim and its dependency stack installed",
+    "full_matrix: recipe x discounting cross beyond the default cells; set DSCIM_CLI_FULL_MATRIX=1",
 ]
 
 [tool.ruff.lint]

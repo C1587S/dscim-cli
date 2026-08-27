@@ -23,7 +23,7 @@ PULSE_YEAR = 2020
 ECON_YEARS = np.arange(2010, 2100)
 # FaIR files must span Climate's base_period (2001, 2010): temperatures
 # are rebased against that window's mean (simple_storage.py
-# gmst_anomalies), and an empty slice poisons everything with NaN.
+# gmst_anomalies), and an empty slice makes every anomaly NaN.
 FAIR_YEARS = np.arange(2001, 2301)
 ANOMALY_BASE = {
     ("g1", "rcp45"): 1.0,
@@ -39,11 +39,20 @@ def _anomaly(gcm: str, rcp: str, years: np.ndarray) -> np.ndarray:
     return ANOMALY_BASE[(gcm, rcp)] * (1.0 + 0.01 * (years - 2010))
 
 
+# Distinct values per ssp and model; identical slices could not show
+# a collapse or mix-up of those dimensions.
+def _ssp_model_factor() -> "np.ndarray":
+    ssp_factor = 1.0 + 0.10 * np.arange(len(SSPS))
+    model_factor = 1.0 + 0.05 * np.arange(len(MODELS))
+    return ssp_factor[:, None] * model_factor[None, :]
+
+
 def write_econ(path) -> str:
     """Write the SSP econ zarr (gdp, pop over ssp/region/model/year)."""
     shape = (len(SSPS), len(REGIONS), len(MODELS), len(ECON_YEARS))
     growth = 1.02 ** (ECON_YEARS - 2010)
-    gdp = np.broadcast_to(5.0e7 * growth, shape)
+    factor = _ssp_model_factor()[:, None, :, None]
+    gdp = np.broadcast_to(5.0e7 * growth, shape) * factor
     pop = np.full(shape, 1.0e3)
     ds = xr.Dataset(
         {
@@ -86,9 +95,13 @@ def write_ce_zarrs(path, *, etas: tuple[float, ...]) -> str:
         "rcp": RCPS,
     }
     shape = tuple(len(coords[d]) for d in dims)
-    no_cc = np.broadcast_to(
-        _consumption(ECON_YEARS)[None, None, None, :, None, None], shape
-    ).copy()
+    factor = _ssp_model_factor()[:, None, :, None, None, None]
+    no_cc = (
+        np.broadcast_to(
+            _consumption(ECON_YEARS)[None, None, None, :, None, None], shape
+        )
+        * factor
+    )
     cc = no_cc.copy()
     for gi, gcm in enumerate(GCMS):
         for ri, rcp in enumerate(RCPS):
@@ -172,7 +185,9 @@ def write_fair(path) -> str:
     control = np.broadcast_to(
         control, (len(RCPS), len(simulations), len(GASES), len(FAIR_YEARS))
     )
-    pulse = control + 0.01
+    # The pulse starts at the pulse year; a constant offset over all
+    # years would be removed exactly by the base-period rebasing.
+    pulse = control + 0.01 * (FAIR_YEARS >= PULSE_YEAR)
     ds = xr.Dataset(
         {
             "control_temperature": (("rcp", "simulation", "gas", "year"), control),
@@ -203,9 +218,12 @@ def write_fair(path) -> str:
 
 
 def write_conversion(path) -> str:
-    """Write the per-gas pulse conversion file."""
+    """Write the per-gas pulse conversion file.
+
+    A factor of exactly 1.0 would make a dropped conversion invisible.
+    """
     ds = xr.Dataset(
-        {"conversion": (("gas",), np.ones(len(GASES)))},
+        {"conversion": (("gas",), np.full(len(GASES), 0.5))},
         coords={"gas": GASES},
     )
     target = str(path / "conversion.nc")
@@ -239,7 +257,7 @@ def write_rff_fair(path) -> str:
     ramp = 1.0 + 2.5 * (FAIR_YEARS - 2001) / 300.0
     control = np.stack([ramp * (1.0 + 0.1 * r) for r in RUNIDS])[:, None, :]
     control = np.broadcast_to(control, (len(RUNIDS), len(GASES), len(FAIR_YEARS)))
-    pulse = control + 0.01
+    pulse = control + 0.01 * (FAIR_YEARS >= PULSE_YEAR)
     ds = xr.Dataset(
         {
             "control_temperature": (("runid", "gas", "year"), control),
@@ -270,8 +288,10 @@ def write_rff_coefficients(
     shipped EPA files.
     """
     shape = (len(RUNIDS), len(FAIR_YEARS))
-    linear = np.full(shape, 1.0e5)
-    quadratic = np.full(shape, 2.0e4)
+    # A mild year trend keeps the coefficients' year dependence visible.
+    trend = 1.0 + 0.001 * (FAIR_YEARS - PULSE_YEAR)
+    linear = np.broadcast_to(1.0e5 * trend, shape)
+    quadratic = np.broadcast_to(2.0e4 * trend, shape)
     ds = xr.Dataset(
         {
             "anomaly": (("runid", "year"), linear),
@@ -412,11 +432,9 @@ def write_ssp_coefficients(
     directory = pathlib.Path(results_root) / sector / str(PULSE_YEAR) / "unmasked"
     directory.mkdir(parents=True, exist_ok=True)
     years = np.arange(PULSE_YEAR, 2301)
+    trend = 1.0 + 0.001 * (years - PULSE_YEAR)
     ds = xr.Dataset(
-        {
-            name: (("year",), np.full(len(years), value))
-            for name, value in variables.items()
-        },
+        {name: (("year",), value * trend) for name, value in variables.items()},
         coords={"year": years},
     )
     target = (
@@ -454,5 +472,20 @@ def write_short_fair(path) -> str:
         },
     )
     target = str(path / "short_fair.nc4")
+    ds.to_netcdf(target)
+    return target
+
+
+def write_ecs_mask(path) -> str:
+    """Write an ECS mask file with one variable, `keep_first`.
+
+    Keeps the first FaIR simulation and drops the second, so applying
+    the mask changes the result.
+    """
+    ds = xr.Dataset(
+        {"keep_first": (("simulation",), np.array([True, False]))},
+        coords={"simulation": [0, 1]},
+    )
+    target = str(path / "ecs_mask.nc4")
     ds.to_netcdf(target)
     return target
