@@ -868,7 +868,7 @@ def _validate_scc(config: dict, errors: list[str]) -> None:
 
 
 def resolved_config(config: dict) -> dict:
-    """Fill non-scientific defaults so the effective config is explicit.
+    """Fill non-scientific defaults.
 
     Options marked ``config_required`` are never filled.
     """

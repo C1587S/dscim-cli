@@ -9,7 +9,7 @@ fitted during the run).
 
 Not yet used against production-scale data.
 
-## Install
+## Installation
 
 The catalogue, validation, and planning commands need only click and
 PyYAML:
@@ -28,7 +28,7 @@ uv pip install ".[run]"
 Every run writes a `*_run_metadata.yaml` recording the dscim version and
 commit that produced it.
 
-## Try it
+## Quick start
 
 No data needed:
 
@@ -67,7 +67,7 @@ environment variables. Start from
 [examples/ssp.yaml](examples/ssp.yaml) and
 [examples/rff.yaml](examples/rff.yaml).
 
-## Running it
+## Running
 
 ```shell
 dscim-cli validate config.yml

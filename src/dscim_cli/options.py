@@ -157,7 +157,7 @@ class Value:
 
 @dataclass(frozen=True)
 class Option:
-    """One option dscim accepts, as recorded in the catalogue.
+    """One option dscim accepts.
 
     Parameters
     ----------
@@ -214,7 +214,7 @@ class Option:
 
 @dataclass(frozen=True)
 class Combination:
-    """A cross-option validity rule, as data.
+    """A cross-option validity rule.
 
     Parameters
     ----------
