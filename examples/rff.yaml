@@ -11,7 +11,13 @@ climate:
   # in rff mode; empty strings are accepted here only.
   gmst_path: ""
   gmsl_path: ""
-  damages_pulse_conversion_path: /inputs/climate/conversion_v5.03.nc4
+  # Conversion factors inline; the netCDF dscim reads is generated at
+  # {paths.results}/gas_conversions.nc4. A damages_pulse_conversion_path
+  # to an existing file works instead.
+  gas_conversions:
+    CO2_Fossil: 2.72916487e-10
+    CH4: 2.5e-08
+    N2O: 6.36480131e-07
   ecs_mask_path: null
   # Must be null: runid-shaped FaIR files have no rcp dimension.
   emission_scenarios: null

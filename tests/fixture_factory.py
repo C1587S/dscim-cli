@@ -279,7 +279,13 @@ def write_rff_fair(path) -> str:
 
 
 def write_rff_coefficients(
-    path, *, recipe: str, discounting: str, eta: float, rho: float
+    path,
+    *,
+    recipe: str,
+    discounting: str,
+    eta: float,
+    rho: float,
+    naming: str = "dscim",
 ) -> str:
     """Write a damage-function coefficient nc4 with patsy-term variables.
 
@@ -301,11 +307,13 @@ def write_rff_coefficients(
     )
     directory = path / "dfs" / "CAMEL_test"
     directory.mkdir(parents=True, exist_ok=True)
-    target = str(
-        directory
-        / f"{recipe}_{discounting}_eta{eta}_rho{rho}_damage_function_coefficients.nc4"
-    )
-    ds.to_netcdf(target)
+    if naming == "epa":
+        name = f"{recipe}_{discounting}_eta{round(eta, 3)}_rho{round(rho, 3)}_dfc.nc4"
+    else:
+        name = (
+            f"{recipe}_{discounting}_eta{eta}_rho{rho}_damage_function_coefficients.nc4"
+        )
+    ds.to_netcdf(str(directory / name))
     return str(directory)
 
 

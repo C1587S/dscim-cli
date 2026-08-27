@@ -520,3 +520,29 @@ def test_scc_validation_rules():
     ]
     config["scc"] = {"output": "/o", "collapse": "mean", "inputs": "/x"}
     assert "unknown scc key" in errors_of(config)
+
+
+def test_gas_conversions_replaces_conversion_file():
+    config = rff_config()
+    del config["climate"]["damages_pulse_conversion_path"]
+    config["climate"]["gas_conversions"] = {"CO2_Fossil": 2.72916487e-10}
+    assert validate_config(config) == []
+
+
+def test_gas_conversions_and_file_are_exclusive():
+    config = rff_config()
+    config["climate"]["gas_conversions"] = {"CO2_Fossil": 1e-10}
+    assert "exactly one" in errors_of(config)
+    del config["climate"]["damages_pulse_conversion_path"]
+    del config["climate"]["gas_conversions"]
+    assert "exactly one" in errors_of(config)
+
+
+def test_gas_conversions_must_cover_selected_gases():
+    config = rff_config()
+    del config["climate"]["damages_pulse_conversion_path"]
+    config["climate"]["gas_conversions"] = {"CH4": 2.5e-08}
+    message = errors_of(config)
+    assert "CO2_Fossil" in message
+    config["climate"]["gas_conversions"] = {"CO2_Fossil": -1.0}
+    assert "positive" in errors_of(config)

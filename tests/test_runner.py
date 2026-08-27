@@ -4,6 +4,7 @@ Skipped when dscim is not installed.
 """
 
 import os
+import pathlib
 
 import pytest
 
@@ -317,8 +318,6 @@ def test_sum_sectors_builds_aggregate(tmp_path):
 
 
 def test_reduce_all_writes_both_conventions(tmp_path):
-    import pathlib
-
     config = fixture_factory.ssp_fixture_config(tmp_path, etas=(2.0,))
     fixture_factory.write_batch_damages(tmp_path)
     fresh = tmp_path / "fresh_reduced"
@@ -437,3 +436,56 @@ def test_scc_compose_certainty_equivalent_and_cross_root(rff_with_outputs):
     written = xr.open_dataset(lines[0].split("completed: ")[1])
     assert "runid" not in written.dims
     _assert_not_degenerate(written["scghg"], varying=())
+
+
+def test_gas_conversions_match_conversion_file(tmp_path):
+    with_file = fixture_factory.rff_fixture_config(tmp_path)
+    runner.execute(with_file, invocation="test")
+
+    inline_dir = tmp_path / "inline"
+    inline_dir.mkdir()
+    inline = fixture_factory.rff_fixture_config(inline_dir)
+    del inline["climate"]["damages_pulse_conversion_path"]
+    inline["climate"]["gas_conversions"] = {"CO2_Fossil": 0.5}
+    assert validate_config(inline) == []
+    runner.execute(inline, invocation="test")
+
+    generated = pathlib.Path(inline["paths"]["results"]) / "gas_conversions.nc4"
+    assert generated.exists()
+
+    name = "risk_aversion_euler_ramsey_eta2.0_rho0.0001_uncollapsed_sccs.nc4"
+    tail = pathlib.Path("CAMEL_test") / "2020" / "unmasked" / name
+    from_file = xr.open_dataset(pathlib.Path(with_file["paths"]["results"]) / tail)
+    from_inline = xr.open_dataset(pathlib.Path(inline["paths"]["results"]) / tail)
+    xr.testing.assert_allclose(from_file, from_inline)
+
+
+def _rff_epa_named_config(tmp_path):
+    config = fixture_factory.rff_fixture_config(tmp_path)
+    directory = pathlib.Path(config["sectors"]["CAMEL_test"]["damage_function_path"])
+    for stale in directory.iterdir():
+        stale.unlink()
+    fixture_factory.write_rff_coefficients(
+        tmp_path,
+        recipe="risk_aversion",
+        discounting="euler_ramsey",
+        eta=2.0,
+        rho=0.0001,
+        naming="epa",
+    )
+    return config
+
+
+def test_epa_named_coefficients_are_detected_not_used(tmp_path):
+    config = _rff_epa_named_config(tmp_path)
+    with pytest.raises(runner.PreflightError, match="rounded _dfc"):
+        runner.preflight(config, expand_sweep(config))
+
+
+def test_missing_coefficients_name_both_conventions(tmp_path):
+    config = fixture_factory.rff_fixture_config(tmp_path)
+    directory = pathlib.Path(config["sectors"]["CAMEL_test"]["damage_function_path"])
+    for stale in directory.iterdir():
+        stale.unlink()
+    with pytest.raises(runner.PreflightError, match=r"_dfc\.nc4"):
+        runner.preflight(config, expand_sweep(config))

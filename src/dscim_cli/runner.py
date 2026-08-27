@@ -27,7 +27,9 @@ from dscim.menu.simple_storage import Climate, EconVars
 
 from dscim_cli.config import (
     Run,
+    _coefficient_file,
     config_provenance,
+    epa_coefficient_file,
     expand_sweep,
     resolved_config,
     run_outputs,
@@ -213,6 +215,31 @@ def preflight(config: dict, runs: list[Run]) -> None:
                     f"(pulse year minus 2 through ext_subset_end_year)"
                 )
 
+    coefficient_runs = [
+        run for run in runs if "damage_function_path" in config["sectors"][run.sector]
+    ]
+    for run in coefficient_runs:
+        directory = config["sectors"][run.sector]["damage_function_path"]
+        dscim_file = _coefficient_file(directory, run)
+        if os.path.exists(dscim_file):
+            continue
+        epa_file = epa_coefficient_file(directory, run)
+        if os.path.exists(epa_file):
+            errors.append(
+                f"{directory} holds {os.path.basename(epa_file)} but dscim "
+                f"main reads full-precision names and will look for "
+                f"{os.path.basename(dscim_file)}; EPA's published library "
+                f"uses rounded _dfc.nc4 names. Rename the files (or teach "
+                f"dscim to read both) before running"
+            )
+        else:
+            errors.append(
+                f"no coefficient file for {run.sector} "
+                f"{run.recipe}/{run.discounting} eta={run.eta} rho={run.rho}: "
+                f"tried {os.path.basename(dscim_file)} and the EPA name "
+                f"{os.path.basename(epa_file)} in {directory}"
+            )
+
     for run in runs:
         if run.discounting not in MainRecipe.DISCOUNT_TYPES:
             errors.append(
@@ -255,6 +282,11 @@ def build_kwargs(config: dict, run: Run) -> dict:
     block = config["sectors"][run.sector]
     mode = config["mode"]
 
+    factors = climate_config.pop("gas_conversions", None)
+    if factors is not None:
+        climate_config["damages_pulse_conversion_path"] = _write_gas_conversions(
+            factors, config["paths"]["results"]
+        )
     climate_kwargs = dict(climate_config, pulse_year=run.pulse_year)
     if mode == "ssp":
         climate_kwargs["ecs_mask_name"] = run.mask
@@ -287,6 +319,23 @@ def build_kwargs(config: dict, run: Run) -> dict:
         if key in menu and key != "subset_dict":
             kwargs[key] = menu[key]
     return kwargs
+
+
+def _write_gas_conversions(factors: dict, results_root: str) -> str:
+    """Write the conversion netCDF dscim reads from inline factors.
+
+    The file lives beside the run outputs so it can be inspected after
+    the run.
+    """
+    gases = list(factors)
+    ds = xr.Dataset(
+        {"conversion": (("gas",), np.array([factors[g] for g in gases], dtype=float))},
+        coords={"gas": gases},
+    )
+    target = os.path.join(results_root, "gas_conversions.nc4")
+    os.makedirs(results_root, exist_ok=True)
+    ds.to_netcdf(target)
+    return target
 
 
 def _dscim_commit(version: str) -> str:

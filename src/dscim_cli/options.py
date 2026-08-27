@@ -904,6 +904,18 @@ _OPTIONS = (
         ("CO2_Fossil", "CH4", "N2O"),
         "simple_storage.py:59,70-71",
     ),
+    Option(
+        "gas_conversions",
+        "Pulse-to-tonne conversion factors per gas, given inline instead "
+        "of a conversion netCDF. The file dscim reads is generated from "
+        "these values at {paths.results}/gas_conversions.nc4. Exactly one "
+        "of gas_conversions and damages_pulse_conversion_path must be "
+        "set.",
+        ("fair",),
+        None,
+        "consumed via simple_storage.py conversion; inline factors follow "
+        "dscim-facts-epa (scghg_utils.py gas_conversions)",
+    ),
     # ------------------------------------------------------------------
     # Econ (simple_storage.py EconVars)
     # ------------------------------------------------------------------

@@ -84,6 +84,7 @@ MENU_KEYS = (
 
 CLIMATE_KEYS = (
     "gases",
+    "gas_conversions",
     "gmst_path",
     "gmsl_path",
     "gmst_fair_path",
@@ -551,12 +552,40 @@ def _validate_climate(config: dict, errors: list[str]) -> None:
                 f"{key!r} is not on dscim main: the regional surface exists "
                 f"only on the generalize_df_fit branch"
             )
-    for key in ("gmst_fair_path", "damages_pulse_conversion_path"):
-        if not climate.get(key):
+    if not climate.get("gmst_fair_path"):
+        errors.append(
+            "climate.gmst_fair_path is required (Climate has no default; "
+            "simple_storage.py:47-59)"
+        )
+    has_file = bool(climate.get("damages_pulse_conversion_path"))
+    factors = climate.get("gas_conversions")
+    if has_file == (factors is not None):
+        errors.append(
+            "set exactly one of climate.damages_pulse_conversion_path and "
+            "climate.gas_conversions (the conversion file is generated "
+            "from the inline factors when given)"
+        )
+    if factors is not None:
+        if not isinstance(factors, dict) or not factors:
             errors.append(
-                f"climate.{key} is required (Climate has no default; "
-                f"simple_storage.py:47-59)"
+                "climate.gas_conversions must be a non-empty mapping of "
+                "gas to conversion factor"
             )
+        else:
+            for gas, factor in factors.items():
+                if not isinstance(factor, int | float) or factor <= 0:
+                    errors.append(
+                        f"gas_conversions[{gas!r}] must be a positive "
+                        f"number, got {factor!r}"
+                    )
+            missing = [gas for gas in climate.get("gases") or [] if gas not in factors]
+            if missing:
+                errors.append(
+                    f"climate.gases {missing} have no entry in "
+                    f"gas_conversions; the generated conversion file must "
+                    f"cover every selected gas (simple_storage.py "
+                    f"conversion selects on gas)"
+                )
 
 
 def _validate_econ(config: dict, errors: list[str]) -> None:
@@ -969,6 +998,15 @@ def _coefficient_file(directory: str, run: Run) -> str:
     return os.path.join(directory, stem)
 
 
+def epa_coefficient_file(directory: str, run: Run) -> str:
+    """The EPA library's name for the same file (scghg_utils.py:257-270)."""
+    stem = (
+        f"{run.recipe}_{run.discounting}"
+        f"_eta{round(run.eta, 3)}_rho{round(run.rho, 3)}_dfc.nc4"
+    )
+    return os.path.join(directory, stem)
+
+
 def run_inputs(config: dict, run: Run) -> list[Input]:
     """List a run's input files with their producers.
 
@@ -985,12 +1023,16 @@ def run_inputs(config: dict, run: Run) -> list[Input]:
 
     entries: list[Input] = [
         Input(climate.get("gmst_fair_path") or "", "climate (FaIR GMST)"),
-        Input(
-            climate.get("damages_pulse_conversion_path") or "",
-            "climate (pulse conversion)",
-        ),
         Input(config["econ"]["path"], "socioeconomics"),
     ]
+    if climate.get("damages_pulse_conversion_path"):
+        entries.insert(
+            1,
+            Input(
+                climate["damages_pulse_conversion_path"],
+                "climate (pulse conversion)",
+            ),
+        )
     if uses_gmsl:
         entries.append(
             Input(climate.get("gmsl_fair_path") or "", "climate (FaIR GMSL)")
