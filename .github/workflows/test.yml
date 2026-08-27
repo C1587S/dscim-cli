@@ -17,7 +17,7 @@ jobs:
         with:
           python-version-file: ".python-version"
       - run: uv sync --locked --group tests
-      - run: uv run ruff check src tests
+      - run: uv run ruff check src tests --output-format=github
       - run: uv run ruff format --check src tests
 
   unit:
@@ -33,7 +33,32 @@ jobs:
           python-version-file: ".python-version"
       # No run extra: the unit tests must pass without dscim installed.
       - run: uv sync --locked --group tests
-      - run: uv run pytest -m "not integration" -v --color=yes tests
+      - run: >
+          uv run pytest -m "not integration" -v --color=yes
+          --cov dscim_cli --cov-branch --cov-report term-missing
+          --cov-report xml tests
+      - uses: codecov/codecov-action@v5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - uses: actions/setup-python@v5
+        with:
+          python-version-file: ".python-version"
+      - run: uv build
+      # Install the wheel into a bare environment and run a data-free
+      # command, so packaging breakage is caught without the test suite.
+      - run: |
+          uv venv /tmp/smoke
+          uv pip install --python /tmp/smoke/bin/python dist/*.whl
+          /tmp/smoke/bin/dscim-cli stages
 
   integration:
     runs-on: ubuntu-latest

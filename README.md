@@ -1,5 +1,7 @@
 # dscim-cli
 
+[![Tests](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml/badge.svg)](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml)
+
 A command-line interface to [dscim](https://github.com/ClimateImpactLab/dscim),
 the Climate Impact Lab's social cost of carbon library. It drives both
 of dscim's run modes from one YAML config: EPA/RFF (10,000

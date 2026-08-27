@@ -9,6 +9,8 @@ dist/
 .venv/
 .pytest_cache/
 .ruff_cache/
+.coverage
+coverage.xml
 
 # Editors and OS
 .vscode/

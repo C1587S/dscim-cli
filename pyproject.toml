@@ -16,7 +16,7 @@ run = [
 dscim-cli = "dscim_cli.cli:main"
 
 [dependency-groups]
-tests = ["pytest>=8.0", "ruff>=0.8"]
+tests = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.8"]
 dev = [{ include-group = "tests" }]
 
 [build-system]
