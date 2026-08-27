@@ -401,8 +401,8 @@ PIPELINE: tuple[Stage, ...] = (
 )
 
 
-def _v(value: object, **kwargs: object) -> Value:
-    return Value(value, **kwargs)  # type: ignore[arg-type]
+def _v(value: object, **kwargs: str) -> Value:
+    return Value(value, **kwargs)
 
 
 _OPTIONS = (

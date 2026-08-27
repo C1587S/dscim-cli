@@ -8,6 +8,7 @@ import difflib
 import itertools
 import os
 from dataclasses import dataclass
+from typing import Any
 
 import yaml
 
@@ -286,7 +287,7 @@ def apply_selectors(
     return result
 
 
-def _deep_copy(node: object) -> object:
+def _deep_copy(node: Any) -> Any:
     if isinstance(node, dict):
         return {k: _deep_copy(v) for k, v in node.items()}
     if isinstance(node, list):

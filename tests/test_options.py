@@ -42,6 +42,7 @@ def test_default_save_files_are_the_eleven_from_dscim_main():
 def test_discount_types_include_constant_gwr_as_unsupported():
     assert "constant_gwr" in DISCOUNT_TYPES
     entry = CATALOGUE["discounting_type"].value("constant_gwr")
+    assert entry is not None
     assert entry.status == "unsupported"
     assert entry.reason
     assert entry.citation
@@ -50,6 +51,7 @@ def test_discount_types_include_constant_gwr_as_unsupported():
 
 def test_quantreg_catalogued_not_omitted():
     entry = CATALOGUE["fit_type"].value("quantreg")
+    assert entry is not None
     assert entry.status == "unsupported"
     assert entry.reason
     assert entry.citation

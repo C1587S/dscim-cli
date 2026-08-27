@@ -70,12 +70,39 @@ _SELECTOR_AXES = {
 
 
 def _load(
-    config_path: str, overrides: tuple[str, ...], **selectors: object
+    config_path: str,
+    overrides: tuple[str, ...],
+    *,
+    sectors: tuple[str, ...] = (),
+    pulse_years: tuple[int, ...] = (),
+    recipes: tuple[str, ...] = (),
+    discountings: tuple[str, ...] = (),
+    masks: tuple[str, ...] = (),
+    eta: float | None = None,
+    rho: float | None = None,
 ) -> tuple[dict, dict]:
     config = load_config(config_path)
     sources: dict[str, str] = {}
+    selectors: dict[str, object] = {
+        "sectors": sectors,
+        "pulse_years": pulse_years,
+        "recipes": recipes,
+        "discountings": discountings,
+        "masks": masks,
+        "eta": eta,
+        "rho": rho,
+    }
     if any(v is not None and v != () for v in selectors.values()):
-        config = apply_selectors(config, **selectors)  # type: ignore[arg-type]
+        config = apply_selectors(
+            config,
+            sectors=sectors,
+            pulse_years=pulse_years,
+            recipes=recipes,
+            discountings=discountings,
+            masks=masks,
+            eta=eta,
+            rho=rho,
+        )
         for name, value in selectors.items():
             if value is not None and value != ():
                 sources[_SELECTOR_AXES[name]] = "flag"

@@ -6,9 +6,13 @@ format:
 lint:
 	uv run --group tests ruff check --fix src tests
 
+# check types
+typecheck:
+	uv run --group tests ty check
+
 # run tests
 test:
 	uv run --group tests pytest --color=yes tests
 
-# run format, linting, testing checks
-validate: format lint test
+# run format, linting, type, and testing checks
+validate: format lint typecheck test

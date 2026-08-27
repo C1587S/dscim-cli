@@ -16,12 +16,17 @@ run = [
 dscim-cli = "dscim_cli.cli:main"
 
 [dependency-groups]
-tests = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.8"]
+tests = ["pytest>=8.0", "pytest-cov>=6.0", "ruff>=0.8", "ty>=0.0.35"]
 dev = [{ include-group = "tests" }]
 
 [build-system]
 requires = ["uv_build>=0.11.13,<0.13.0"]
 build-backend = "uv_build"
+
+[tool.ty.environment]
+# tests/fixture_factory.py is imported via a runtime path insertion by
+# the integration tests and the demo notebook.
+extra-paths = ["tests"]
 
 [tool.pytest.ini_options]
 markers = [
