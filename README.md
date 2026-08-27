@@ -1,6 +1,7 @@
 # dscim-cli
 
 [![Tests](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml/badge.svg)](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml)
+[![codecov](https://codecov.io/gh/C1587S/dscim-cli/graph/badge.svg)](https://codecov.io/gh/C1587S/dscim-cli)
 
 A command-line interface to [dscim](https://github.com/ClimateImpactLab/dscim),
 the Climate Impact Lab's social cost of carbon library. It drives both
