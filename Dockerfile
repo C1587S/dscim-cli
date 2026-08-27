@@ -1,6 +1,11 @@
 FROM python:3.12-slim-bookworm
 COPY --from=ghcr.io/astral-sh/uv:0.8.22 /uv /uvx /bin/
 
+# uv needs the git CLI to fetch the dscim git dependency.
+RUN apt-get -qq update \
+    && apt-get -qq install --yes --no-install-recommends git \
+    && rm -rf /var/lib/apt/lists/*
+
 ARG APP_HOME="/opt/dscim-cli"
 
 # Run without root permissions.

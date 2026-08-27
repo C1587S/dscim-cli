@@ -2,6 +2,9 @@
 
 [![Tests](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml/badge.svg)](https://github.com/C1587S/dscim-cli/actions/workflows/test.yml)
 [![codecov](https://codecov.io/gh/C1587S/dscim-cli/graph/badge.svg)](https://codecov.io/gh/C1587S/dscim-cli)
+[![container](https://github.com/C1587S/dscim-cli/actions/workflows/container.yml/badge.svg)](https://github.com/C1587S/dscim-cli/actions/workflows/container.yml)
+[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/C1587S/dscim-cli/HEAD?labpath=examples%2Fdemo.ipynb)
+[![Python](https://img.shields.io/badge/python-3.12%2B-blue)](pyproject.toml)
 
 A command-line interface to [dscim](https://github.com/ClimateImpactLab/dscim),
 the Climate Impact Lab's social cost of carbon library. It drives both
@@ -43,8 +46,8 @@ dscim-cli constraints                 # cross-option validity rules
 dscim-cli defaults                    # dscim's defaults and what you must set
 ```
 
-[![Binder](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/C1587S/dscim-cli/HEAD?labpath=examples%2Fdemo.ipynb)
-runs [examples/demo.ipynb](examples/demo.ipynb) on generated fixtures.
+[examples/demo.ipynb](examples/demo.ipynb) runs the walkthrough on
+generated fixtures; the Binder badge above launches it.
 
 ## Commands
 
@@ -92,10 +95,18 @@ repository.
 
 ## Container
 
+Published to ghcr on every push to main (`edge`) and on version tags:
+
+```shell
+docker pull ghcr.io/c1587s/dscim-cli:edge
+docker run --rm -v ./conf:/mnt/conf:ro -v ./data:/mnt/data \
+    ghcr.io/c1587s/dscim-cli:edge run /mnt/conf/config.yml
+```
+
+Or build locally:
+
 ```shell
 docker build -t dscim-cli:dev .
-docker run --rm -v ./conf:/mnt/conf:ro -v ./data:/mnt/data \
-    dscim-cli:dev run /mnt/conf/config.yml
 ```
 
 ## Development

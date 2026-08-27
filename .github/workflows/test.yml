@@ -40,6 +40,7 @@ jobs:
       - uses: codecov/codecov-action@v5
         with:
           token: ${{ secrets.CODECOV_TOKEN }}
+          flags: unit
 
   package:
     runs-on: ubuntu-latest
@@ -76,4 +77,15 @@ jobs:
         with:
           python-version-file: ".python-version"
       - run: uv sync --locked --group tests --extra run
-      - run: uv run pytest -v --color=yes tests
+      - run: >
+          uv run pytest -v --color=yes
+          --cov dscim_cli --cov-branch --cov-report term-missing
+          --cov-report xml tests
+      # pytest-cov writes coverage.xml even when tests fail, so upload
+      # unless the job was cancelled; only a crash before pytest finishes
+      # loses this job's coverage, leaving the unit flag as the floor.
+      - uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          flags: integration
