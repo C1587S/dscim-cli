@@ -102,5 +102,5 @@ uv sync --group tests
 just validate      # format, lint, test
 ```
 
-Usnit tests run without dscim installed; the integration suite is marked
+Unit tests run without dscim installed; the integration suite is marked
 `integration` and skipped unless dscim is importable.

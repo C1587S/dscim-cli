@@ -1,0 +1,4 @@
+#!/bin/bash
+# Runs from the repository root after the conda environment is built.
+set -euo pipefail
+pip install --no-cache-dir ".[run]"
