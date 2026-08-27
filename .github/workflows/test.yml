@@ -16,7 +16,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version-file: ".python-version"
-      - run: uv sync --locked --group tests
+      # The run extra is needed here because ty resolves imports:
+      # runner.py, scc.py, and the integration tests import dscim and
+      # its stack, and ty should check them against the environment the
+      # code actually runs in.
+      - run: uv sync --locked --group tests --extra run
       - run: uv run ruff check src tests --output-format=github
       - run: uv run ruff format --check src tests
       - run: uv run ty check
