@@ -45,6 +45,7 @@ __all__ = [
     "run_outputs",
     "save_path_for",
     "settings_summary",
+    "summary_data",
     "validate_config",
 ]
 
@@ -1197,8 +1198,12 @@ def _missing_by_producer(config: dict, runs: list[Run]) -> dict[str, list[Input]
     return {producer: list(paths.values()) for producer, paths in grouped.items()}
 
 
-def render_summary(config: dict, runs: list[Run]) -> str:
-    """Render the summary dry-run report."""
+def summary_data(config: dict, runs: list[Run]) -> dict:
+    """Collect the dry-run summary as plain data.
+
+    Keys: mode, run count, axis sizes, missing inputs grouped by
+    producer, output totals, and the blocked-run count.
+    """
     sweep = config["sweep"]
     axes = [
         f"{len(sweep['sectors'])} sectors",
@@ -1209,37 +1214,50 @@ def render_summary(config: dict, runs: list[Run]) -> str:
     if config["mode"] == "ssp":
         axes.append(f"{len(sweep.get('masks', [None]))} masks")
         axes.append(f"{len(sweep.get('fair_dims', [['simulation']]))} fair_dims")
-    lines = [
-        f"mode: {config['mode']}",
-        f"runs: {len(runs)}  ({' x '.join(axes)})",
-    ]
+    all_outputs = [p for run in runs for p in run_outputs(config, run)]
+    return {
+        "mode": config["mode"],
+        "runs": len(runs),
+        "axes": axes,
+        "missing": {
+            producer: sorted(entries, key=lambda e: e.path)
+            for producer, entries in _missing_by_producer(config, runs).items()
+        },
+        "outputs": len(all_outputs),
+        "outputs_existing": sum(1 for p in all_outputs if os.path.exists(p)),
+        "blocked": sum(
+            1
+            for run in runs
+            if any(not os.path.exists(i.path) for i in run_inputs(config, run))
+        ),
+    }
 
-    missing = _missing_by_producer(config, runs)
-    if missing:
+
+def render_summary(config: dict, runs: list[Run]) -> str:
+    """Render the summary dry-run report."""
+    data = summary_data(config, runs)
+    lines = [
+        f"mode: {data['mode']}",
+        f"runs: {data['runs']}  ({' x '.join(data['axes'])})",
+    ]
+    if data["missing"]:
         lines.append("missing inputs:")
-        for producer in sorted(missing, key=lambda p: (p != EXTERNAL, p)):
-            entries = missing[producer]
+        for producer in sorted(data["missing"], key=lambda p: (p != EXTERNAL, p)):
+            entries = data["missing"][producer]
             if producer == EXTERNAL:
                 lines.append(f"  external: provide these files ({len(entries)}):")
             else:
                 lines.append(
                     f"  produced by `dscim-cli {producer} CONFIG` ({len(entries)}):"
                 )
-            for entry in sorted(entries, key=lambda e: e.path):
+            for entry in entries:
                 lines.append(f"    {entry.path}  [{entry.kind}]")
     else:
         lines.append("missing inputs: none")
-
-    all_outputs = [p for run in runs for p in run_outputs(config, run)]
-    existing = sum(1 for p in all_outputs if os.path.exists(p))
-    lines.append(f"outputs: {len(all_outputs)} files, {existing} already exist")
-
-    blocked = sum(
-        1
-        for run in runs
-        if any(not os.path.exists(i.path) for i in run_inputs(config, run))
+    lines.append(
+        f"outputs: {data['outputs']} files, {data['outputs_existing']} already exist"
     )
-    lines.append(f"blocked runs: {blocked} of {len(runs)} (missing inputs)")
+    lines.append(f"blocked runs: {data['blocked']} of {data['runs']} (missing inputs)")
     lines.append("use --verbose or --runs N[,N...] for per-run detail")
     return "\n".join(lines)
 

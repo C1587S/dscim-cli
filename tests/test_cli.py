@@ -214,3 +214,35 @@ def test_scc_command_requires_block():
     result = invoke("scc", str(EXAMPLES / "minimal.yaml"))
     assert result.exit_code == 1
     assert "no scc block" in result.output
+
+
+def test_output_is_plain_when_not_a_terminal():
+    # CliRunner streams are not terminals, so auto-detection gives the
+    # same output as the explicit flag and the environment variable.
+    default = invoke("stages")
+    flagged = invoke("--plain", "stages")
+    via_env = invoke("stages", env={"DSCIM_CLI_PLAIN": "1"})
+    assert default.output == flagged.output == via_env.output
+    assert "\x1b[" not in default.output  # no control characters
+
+
+def test_rich_path_renders_stages_tree(monkeypatch):
+    from dscim_cli import cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_stdout_is_terminal", lambda: True)
+    result = invoke("stages")
+    assert result.exit_code == 0, result.output
+    assert "pipeline" in result.output
+    assert "sum-sectors" in result.output
+    assert "├──" in result.output  # tree guides
+
+
+def test_rich_path_renders_plan_with_status_words(monkeypatch):
+    from dscim_cli import cli as cli_module
+
+    monkeypatch.setattr(cli_module, "_stdout_is_terminal", lambda: True)
+    result = invoke("plan", str(EXAMPLES / "ssp.yaml"))
+    assert result.exit_code == 0, result.output
+    # status words stay present, so colour is never the only signal
+    assert "[blocked-by-" in result.output
+    assert "[missing]" in result.output

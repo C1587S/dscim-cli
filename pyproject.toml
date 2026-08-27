@@ -3,7 +3,7 @@ name = "dscim-cli"
 version = "0.1.0"
 description = "Command-line interface to the dscim social cost of carbon library"
 requires-python = ">=3.12"
-dependencies = ["click>=8.1", "pyyaml>=6.0"]
+dependencies = ["click>=8.1", "pyyaml>=6.0", "rich>=13.0"]
 
 [project.optional-dependencies]
 # dscim pinned to the main commit the test suite runs against. To use

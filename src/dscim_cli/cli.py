@@ -7,8 +7,13 @@ import os
 import sys
 
 import click
+from rich.console import Console
+from rich.table import Table
+from rich.text import Text
+from rich.tree import Tree
 
 from dscim_cli.config import (
+    SUMMARY_OPTIONS,
     ConfigError,
     apply_overrides,
     apply_selectors,
@@ -19,11 +24,31 @@ from dscim_cli.config import (
     render_plan,
     render_summary,
     settings_summary,
+    summary_data,
     validate_config,
 )
 from dscim_cli.options import CATALOGUE, COMPATIBILITY, PIPELINE, REQUIRED, STATUSES
 
 __all__ = ["main"]
+
+# Set by the group callback: plain text when asked for or when stdout is
+# not a terminal, so files and pipes never receive layout or colour.
+_plain_output = True
+
+ACCENT = "yellow"
+
+
+def _stdout_is_terminal() -> bool:
+    return sys.stdout.isatty()
+
+
+def _use_rich() -> bool:
+    return not _plain_output
+
+
+def _console() -> Console:
+    return Console(highlight=False)
+
 
 _SELECTOR_OPTIONS = (
     click.option("--sector", "sectors", multiple=True, help="Keep only these sectors."),
@@ -127,8 +152,11 @@ def _fail(error: ConfigError) -> None:
     }
 )
 @click.option("--log-level", default="INFO", show_default=True)
-def main(log_level: str) -> None:
+@click.option("--plain", is_flag=True, help="Unadorned text output.")
+def main(log_level: str, plain: bool) -> None:
     """Command-line interface to the dscim SCC library."""
+    global _plain_output
+    _plain_output = plain or not _stdout_is_terminal()
     logging.basicConfig(level=log_level.upper(), format="%(levelname)s %(message)s")
 
 
@@ -205,7 +233,10 @@ def run(
     for message in warnings:
         click.echo(f"warning: {message}")
     runs = expand_sweep(config)
-    click.echo(settings_summary(config, sources=sources, verbose=verbose))
+    if _use_rich():
+        _rich_settings(config, sources=sources, verbose=verbose)
+    else:
+        click.echo(settings_summary(config, sources=sources, verbose=verbose))
 
     if dry_run:
         if run_indices is not None:
@@ -213,6 +244,8 @@ def run(
             click.echo(render_plan(config, runs, indices=indices))
         elif verbose:
             click.echo(render_plan(config, runs))
+        elif _use_rich():
+            _rich_summary(config, runs)
         else:
             click.echo(render_summary(config, runs))
         return
@@ -254,7 +287,11 @@ def plan(config_path: str, overrides: tuple[str, ...], allow_unsupported: bool) 
     except ConfigError as error:
         _fail(error)
         return
-    for index, step in enumerate(plan_steps(config), start=1):
+    steps = plan_steps(config)
+    if _use_rich():
+        _rich_plan(steps)
+        return
+    for index, step in enumerate(steps, start=1):
         click.echo(f"{index}. [{step.status()}] {step.title}")
         for entry in step.inputs:
             state = "ok" if os.path.exists(entry.path) else "missing"
@@ -268,6 +305,9 @@ def plan(config_path: str, overrides: tuple[str, ...], allow_unsupported: bool) 
 @main.command()
 def stages() -> None:
     """Explain the pipeline: stages, data flow, and dimension collapses."""
+    if _use_rich():
+        _rich_stages()
+        return
     for index, stage in enumerate(PIPELINE, start=1):
         modes = ",".join(stage.modes)
         click.echo(f"{index}. {stage.name} (modes: {modes})")
@@ -291,6 +331,7 @@ def stages() -> None:
 @click.option("--status", default=None, type=click.Choice(list(STATUSES)))
 def options_command(stage: str | None, mode: str | None, status: str | None) -> None:
     """List the catalogued dscim option surface."""
+    rows = []
     for name, entry in sorted(CATALOGUE.items()):
         if stage and stage not in entry.stages:
             continue
@@ -304,9 +345,13 @@ def options_command(stage: str | None, mode: str | None, status: str | None) -> 
             default = "required"
         else:
             default = repr(entry.default)
-        stages_label = ",".join(entry.stages) or "-"
+        rows.append((name, entry.status, ",".join(entry.stages) or "-", default))
+    if _use_rich():
+        _rich_options(rows)
+        return
+    for name, entry_status, stages_label, default in rows:
         click.echo(
-            f"{name:32} {entry.status:12} stages={stages_label:24} default={default}"
+            f"{name:32} {entry_status:12} stages={stages_label:24} default={default}"
         )
 
 
@@ -357,6 +402,9 @@ def explain(option_name: str, values: tuple[str, ...]) -> None:
 @main.command()
 def constraints() -> None:
     """List the cross-option validity rules."""
+    if _use_rich():
+        _rich_constraints()
+        return
     for rule in COMPATIBILITY:
         modes = ",".join(rule.modes)
         click.echo(f"{rule.key} ({rule.kind}; modes: {modes})")
@@ -458,3 +506,154 @@ def scc(config_path: str, overrides: tuple[str, ...]) -> None:
     composer = _heavy("dscim_cli.scc")
     for line in composer.compose(config):
         click.echo(line)
+
+
+def _rich_stages() -> None:
+    tree = Tree("pipeline", guide_style="dim")
+    for index, stage in enumerate(PIPELINE, start=1):
+        label = Text()
+        label.append(f"{index}. {stage.name}", style="bold")
+        label.append(f"  ({','.join(stage.modes)})", style="dim")
+        node = tree.add(label)
+        node.add(Text(stage.summary))
+        if stage.library_call:
+            node.add(Text(f"wraps {stage.library_call}", style="dim"))
+        for title, items in (
+            ("consumes", stage.consumes),
+            ("produces", stage.produces),
+            ("dimensions", stage.collapses),
+        ):
+            branch = node.add(Text(title, style="bold"))
+            for item in items:
+                branch.add(Text(item))
+    _console().print(tree)
+
+
+def _rich_plan(steps) -> None:
+    console = _console()
+    for index, step in enumerate(steps, start=1):
+        status = step.status()
+        line = Text()
+        line.append(f"{index}. {step.title}  ")
+        if status.startswith("blocked"):
+            line.append(f"[{status}]", style=f"bold {ACCENT}")
+        elif status == "outputs-present":
+            line.append(f"[{status}]", style="dim")
+        else:
+            line.append(f"[{status}]", style="bold")
+        console.print(line)
+        for entry in step.inputs:
+            detail = Text("     in  ")
+            if os.path.exists(entry.path):
+                detail.append("[ok] ", style="dim")
+                detail.append(entry.path, style="dim")
+            else:
+                detail.append("[missing] ", style=ACCENT)
+                detail.append(entry.path)
+            if entry.producer:
+                detail.append(f"  <- dscim-cli {entry.producer}", style="dim")
+            console.print(detail)
+        for path in step.outputs:
+            detail = Text("     out ")
+            if os.path.exists(path):
+                detail.append("[exists] ", style="dim")
+                detail.append(path, style="dim")
+            else:
+                detail.append("[new] ", style="dim")
+                detail.append(path)
+            console.print(detail)
+
+
+def _rich_summary(config: dict, runs) -> None:
+    console = _console()
+    data = summary_data(config, runs)
+    header = Text()
+    header.append(f"mode: {data['mode']}   ")
+    header.append(f"runs: {data['runs']}", style="bold")
+    header.append(f"  ({' x '.join(data['axes'])})", style="dim")
+    console.print(header)
+
+    if data["missing"]:
+        console.print(Text("missing inputs:", style="bold"))
+        for producer in sorted(data["missing"], key=lambda p: (p != "", p)):
+            entries = data["missing"][producer]
+            group = Text("  ")
+            if producer:
+                group.append("produced by ")
+                group.append(f"dscim-cli {producer} CONFIG", style=ACCENT)
+            else:
+                group.append("external: provide these files")
+            group.append(f"  ({len(entries)})", style="dim")
+            console.print(group)
+            for entry in entries:
+                line = Text(f"    {entry.path}")
+                line.append(f"  [{entry.kind}]", style="dim")
+                console.print(line)
+    else:
+        console.print("missing inputs: none")
+
+    console.print(
+        f"outputs: {data['outputs']} files, {data['outputs_existing']} already exist"
+    )
+    blocked = Text("blocked runs: ")
+    style = f"bold {ACCENT}" if data["blocked"] else "bold"
+    blocked.append(f"{data['blocked']} of {data['runs']}", style=style)
+    blocked.append("  (missing inputs)", style="dim")
+    console.print(blocked)
+    console.print(
+        Text("use --verbose or --runs N[,N...] for per-run detail", style="dim")
+    )
+
+
+def _rich_options(rows) -> None:
+    table = Table(box=None, pad_edge=False, header_style="bold")
+    table.add_column("option")
+    table.add_column("status")
+    table.add_column("stages", style="dim")
+    table.add_column("default")
+    for name, status, stages_label, default in rows:
+        status_text = (
+            Text(status) if status == "supported" else Text(status, style=ACCENT)
+        )
+        table.add_row(Text(name, style="bold"), status_text, stages_label, default)
+    _console().print(table)
+
+
+def _rich_constraints() -> None:
+    table = Table(box=None, pad_edge=False, header_style="bold", show_lines=True)
+    table.add_column("rule")
+    table.add_column("applies", style="dim")
+    table.add_column("description")
+    for rule in COMPATIBILITY:
+        table.add_row(
+            Text(rule.key, style="bold"),
+            f"{rule.kind}; {','.join(rule.modes)}",
+            Text(rule.description) + Text(f"\n{rule.citation}", style="dim"),
+        )
+    _console().print(table)
+
+
+def _rich_settings(config: dict, *, sources: dict, verbose: bool) -> None:
+    rows = effective_settings(config, sources=sources)
+    if not verbose:
+        rows = [row for row in rows if row[0] in SUMMARY_OPTIONS]
+    table = Table(
+        box=None,
+        pad_edge=False,
+        title="settings",
+        title_style="bold",
+        title_justify="left",
+    )
+    table.add_column("option")
+    table.add_column("value")
+    table.add_column("origin")
+    for name, value, origin in rows:
+        rendered = value if isinstance(value, str) else repr(value)
+        if origin == "default":
+            origin_text = Text(origin, style="dim")
+        elif origin.startswith("required"):
+            origin_text = Text(origin, style=ACCENT)
+        else:
+            origin_text = Text(origin)
+        table.add_row(name, rendered, origin_text)
+    _console().print(table)

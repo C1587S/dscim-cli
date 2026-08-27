@@ -17,7 +17,7 @@ def test_core_modules_do_not_pull_in_click_xarray_or_dscim():
         "import sys\n"
         "import dscim_cli.options\n"
         "import dscim_cli.config\n"
-        "forbidden = {'click', 'xarray', 'dscim'} & set(sys.modules)\n"
+        "forbidden = {'click', 'rich', 'xarray', 'dscim'} & set(sys.modules)\n"
         "assert not forbidden, forbidden\n"
     )
     subprocess.run([sys.executable, "-c", code], check=True)
@@ -29,6 +29,8 @@ def test_only_cli_uses_click_logging_config_and_exit():
             continue
         source = path.read_text()
         assert "import click" not in source, path.name
+        assert "import rich" not in source, path.name
+        assert "from rich" not in source, path.name
         assert "logging.basicConfig" not in source, path.name
         assert "sys.exit(" not in source, path.name
 
